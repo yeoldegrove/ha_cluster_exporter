@@ -8,9 +8,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/promlog"
 	log "github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"github.com/prometheus/exporter-toolkit/web"
 
 	"github.com/ClusterLabs/ha_cluster_exporter/collector"
 	"github.com/ClusterLabs/ha_cluster_exporter/collector/corosync"
@@ -55,6 +57,7 @@ func init() {
 	flag.Bool("enable-timestamps", false, "Add the timestamp to every metric line")
 	flag.CommandLine.MarkDeprecated("enable-timestamps", "server-side metric timestamping is discouraged by Prometheus best-practices and should be avoided")
 	flag.CommandLine.SortFlags = false
+	flag.String("web.config.file", "/etc/ha_cluster_exporter.web.config.yaml", "web configuration YAML file for TLS support")
 
 	err := config.BindPFlags(flag.CommandLine)
 	if err != nil {
@@ -110,12 +113,17 @@ func run() {
 	}
 
 	fullListenAddress := fmt.Sprintf("%s:%s", config.Get("address"), config.Get("port"))
+	server := &http.Server{Addr: fullListenAddress}
 
 	http.HandleFunc("/", internal.Landing)
 	http.Handle("/metrics", promhttp.Handler())
 
 	log.Infof("Serving metrics on %s", fullListenAddress)
-	log.Fatal(http.ListenAndServe(fullListenAddress, nil))
+	// web.ListenAndServe needs a log.logger object from github.com/go-kit/log or github.com/prometheus/common/promlog
+	// https://pkg.go.dev/github.com/prometheus/exporter-toolkit@v0.7.1/web#ListenAndServe
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+	log.Fatal(web.ListenAndServe(server, config.GetString("web.config.file"), logger))
 }
 
 func registerCollectors(config *viper.Viper) (collectors []prometheus.Collector, errors []error) {
