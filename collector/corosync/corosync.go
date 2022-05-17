@@ -3,9 +3,10 @@ package corosync
 import (
 	"os/exec"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
+	"github.com/prometheus/common/promlog"
 
 	"github.com/ClusterLabs/ha_cluster_exporter/collector"
 )
@@ -41,7 +42,10 @@ type corosyncCollector struct {
 }
 
 func (c *corosyncCollector) CollectWithError(ch chan<- prometheus.Metric) error {
-	log.Debugln("Collecting corosync metrics...")
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	level.Debug(logger).Log("msg", "Collecting corosync metrics...")
 
 	// We suppress the exec errors because if any interface is faulty the tools will exit with code 1, but we still want to parse the output.
 	cfgToolOutput, _ := exec.Command(c.cfgToolPath, "-s").Output()
@@ -62,9 +66,14 @@ func (c *corosyncCollector) CollectWithError(ch chan<- prometheus.Metric) error 
 }
 
 func (c *corosyncCollector) Collect(ch chan<- prometheus.Metric) {
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	level.Debug(logger).Log("msg", "Collecting corosync metrics...")
+
 	err := c.CollectWithError(ch)
 	if err != nil {
-		log.Warnf("'%s' collector scrape failed: %s", c.GetSubsystem(), err)
+		level.Warn(logger).Log(c.GetSubsystem()+" collector scrape failed", "err", err)
 	}
 }
 

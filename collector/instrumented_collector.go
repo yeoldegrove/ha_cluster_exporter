@@ -1,10 +1,10 @@
 package collector
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/ClusterLabs/ha_cluster_exporter/internal/clock"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promlog"
 )
 
 //go:generate mockgen -destination ../test/mock_collector/instrumented_collector.go github.com/ClusterLabs/ha_cluster_exporter/collector InstrumentableCollector
@@ -48,6 +48,9 @@ func NewInstrumentedCollector(collector InstrumentableCollector) *InstrumentedCo
 }
 
 func (ic *InstrumentedCollector) Collect(ch chan<- prometheus.Metric) {
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
 	var success float64
 	begin := ic.Clock.Now()
 	err := ic.collector.CollectWithError(ch)
@@ -55,7 +58,7 @@ func (ic *InstrumentedCollector) Collect(ch chan<- prometheus.Metric) {
 	if err == nil {
 		success = 1
 	} else {
-		log.Warnf("'%s' collector scrape failed: %s", ic.collector.GetSubsystem(), err)
+		level.Warn(logger).Log(ic.collector.GetSubsystem()+" collector scrape failed: ", "err", err)
 	}
 	ch <- prometheus.MustNewConstMetric(ic.scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds())
 	ch <- prometheus.MustNewConstMetric(ic.scrapeSuccessDesc, prometheus.GaugeValue, success)

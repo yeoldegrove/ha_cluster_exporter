@@ -6,9 +6,10 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	log "github.com/sirupsen/logrus"
+	"github.com/prometheus/common/promlog"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
@@ -43,6 +44,7 @@ func init() {
 
 	flag.String("port", "9664", "The port number to listen on for HTTP requests")
 	flag.String("address", "0.0.0.0", "The address to listen on for HTTP requests")
+	flag.String("log.level", "info", "The minimum logging level; levels are, in ascending order: debug, info, warn, error")
 	flag.String("log-level", "info", "The minimum logging level; levels are, in ascending order: debug, info, warn, error")
 	flag.String("crm-mon-path", "/usr/sbin/crm_mon", "path to crm_mon executable")
 	flag.String("cibadmin-path", "/usr/sbin/cibadmin", "path to cibadmin executable")
@@ -53,13 +55,9 @@ func init() {
 	flag.String("drbdsetup-path", "/sbin/drbdsetup", "path to drbdsetup executable")
 	flag.String("drbdsplitbrain-path", "/var/run/drbd/splitbrain", "path to drbd splitbrain hooks temporary files")
 	flag.Bool("enable-timestamps", false, "Add the timestamp to every metric line")
+	flag.CommandLine.MarkDeprecated("log-level", "please use --log.level")
 	flag.CommandLine.MarkDeprecated("enable-timestamps", "server-side metric timestamping is discouraged by Prometheus best-practices and should be avoided")
 	flag.CommandLine.SortFlags = false
-
-	err := config.BindPFlags(flag.CommandLine)
-	if err != nil {
-		log.Fatalf("Could not bind config to CLI flags: %v", err)
-	}
 
 	helpFlag = flag.BoolP("help", "h", false, "show this help message")
 	versionFlag = flag.Bool("version", false, "show version and build information")
@@ -73,39 +71,49 @@ func main() {
 		showHelp()
 	case *versionFlag:
 		showVersion()
+		os.Exit(0)
 	default:
 		run()
 	}
 }
 
 func run() {
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	showVersion()
+
 	var err error
+	
+	err = config.BindPFlags(flag.CommandLine)
+	if err != nil {
+		level.Error(logger).Log("msg", "Could not bind config to CLI flags", "err", err)
+	}
 
 	err = config.ReadInConfig()
 	if err != nil {
-		log.Warn(err)
-		log.Info("Default config values will be used")
+		level.Warn(logger).Log("msg", "Reading config file failed", "err", err)
+		level.Info(logger).Log("msg", "Default config values will be used")
 	} else {
-		log.Info("Using config file: ", config.ConfigFileUsed())
+		level.Info(logger).Log("msg", "Using config file: " + config.ConfigFileUsed())
 	}
-
-	internal.SetLogLevel(config.GetString("log-level"))
 
 	collectors, errors := registerCollectors(config)
 	for _, err = range errors {
-		log.Warn("Registration failure: ", err)
+		level.Warn(logger).Log("msg", "Registration failure: ", "err", err)
 	}
 	if len(collectors) == 0 {
-		log.Fatal("No collector could be registered.")
+		level.Error(logger).Log("msg", "No collector could be registered.", "err", err)
+		os.Exit(1)
 	}
 	for _, c := range collectors {
 		if c, ok := c.(collector.SubsystemCollector); ok == true {
-			log.Infof("'%s' collector registered.", c.GetSubsystem())
+			level.Info(logger).Log("msg", c.GetSubsystem() + " collector registered.")
 		}
 	}
 
 	// if we're not in debug log level, we unregister the Go runtime metrics collector that gets registered by default
-	if !log.IsLevelEnabled(log.DebugLevel) {
+	if config.GetString("log-level") != "debug" && config.GetString("log.level") != "debug" {
 		prometheus.Unregister(prometheus.NewGoCollector())
 	}
 
@@ -114,8 +122,12 @@ func run() {
 	http.HandleFunc("/", internal.Landing)
 	http.Handle("/metrics", promhttp.Handler())
 
-	log.Infof("Serving metrics on %s", fullListenAddress)
-	log.Fatal(http.ListenAndServe(fullListenAddress, nil))
+	level.Info(logger).Log("msg", "Serving metrics on " + fullListenAddress + servePath)
+	listen = web.ListenAndServe(serveAddress, "", logger)
+	if err := listen; err != nil {
+		level.Error(logger).Log("msg", "Error starting HTTP server", "err", err)
+		os.Exit(1)
+	}
 }
 
 func registerCollectors(config *viper.Viper) (collectors []prometheus.Collector, errors []error) {
@@ -180,5 +192,4 @@ func showVersion() {
 		buildDate = "at unknown time"
 	}
 	fmt.Printf("version %s\nbuilt with %s %s/%s %s\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH, buildDate)
-	os.Exit(0)
 }

@@ -9,9 +9,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
+	"github.com/prometheus/common/promlog"
 
 	"github.com/ClusterLabs/ha_cluster_exporter/collector"
 )
@@ -57,7 +58,10 @@ type sbdCollector struct {
 }
 
 func (c *sbdCollector) CollectWithError(ch chan<- prometheus.Metric) error {
-	log.Debugln("Collecting SBD metrics...")
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	level.Debug(logger).Log("msg", "Collecting pacemaker metrics...")
 
 	sbdConfiguration, err := readSdbFile(c.sbdConfigPath)
 	if err != nil {
@@ -84,9 +88,14 @@ func (c *sbdCollector) CollectWithError(ch chan<- prometheus.Metric) error {
 }
 
 func (c *sbdCollector) Collect(ch chan<- prometheus.Metric) {
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	level.Debug(logger).Log("msg", "Collecting pacemaker metrics...")
+
 	err := c.CollectWithError(ch)
 	if err != nil {
-		log.Warnf("'%s' collector scrape failed: %s", c.GetSubsystem(), err)
+		level.Warn(logger).Log(c.GetSubsystem()+" collector scrape failed", "err", err)
 	}
 }
 

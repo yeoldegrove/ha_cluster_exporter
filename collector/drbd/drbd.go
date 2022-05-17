@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
+	"github.com/prometheus/common/promlog"
 
 	"github.com/ClusterLabs/ha_cluster_exporter/collector"
 )
@@ -85,7 +86,10 @@ type drbdCollector struct {
 }
 
 func (c *drbdCollector) CollectWithError(ch chan<- prometheus.Metric) error {
-	log.Debugln("Collecting DRBD metrics...")
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	level.Debug(logger).Log("msg", "Collecting DRBD metrics...")
 
 	c.recordDrbdSplitBrainMetric(ch)
 
@@ -117,13 +121,13 @@ func (c *drbdCollector) CollectWithError(ch chan<- prometheus.Metric) error {
 			}
 		}
 		if len(resource.Connections) == 0 {
-			log.Warnf("Could not retrieve connection info for resource '%s'\n", resource.Name)
+			level.Warn(logger).Log("Could not retrieve connection info for resource "+resource.Name, "err", err)
 			continue
 		}
 		// a Resource can have multiple connection with different nodes
 		for _, conn := range resource.Connections {
 			if len(conn.PeerDevices) == 0 {
-				log.Warnf("Could not retrieve any peer device info for connection '%d'\n", conn.PeerNodeID)
+				level.Warn(logger).Log("Could not retrieve any peer device info for connection "+resource.Name, "err", err)
 				continue
 			}
 			for _, peerDev := range conn.PeerDevices {
@@ -141,9 +145,14 @@ func (c *drbdCollector) CollectWithError(ch chan<- prometheus.Metric) error {
 }
 
 func (c *drbdCollector) Collect(ch chan<- prometheus.Metric) {
+	promlogConfig := &promlog.Config{}
+	logger := promlog.New(promlogConfig)
+
+	level.Debug(logger).Log("msg", "Collecting DRBD metrics...")
+
 	err := c.CollectWithError(ch)
 	if err != nil {
-		log.Warnf("'%s' collector scrape failed: %s", c.GetSubsystem(), err)
+		level.Warn(logger).Log(c.GetSubsystem()+" collector scrape failed", "err", err)
 	}
 }
 
