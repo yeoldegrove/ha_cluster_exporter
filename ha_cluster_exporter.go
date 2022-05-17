@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/exporter-toolkit/web"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
@@ -42,8 +43,11 @@ func init() {
 	config.AddConfigPath("/etc/")
 	config.AddConfigPath("/usr/etc/")
 
-	flag.String("port", "9664", "The port number to listen on for HTTP requests")
+	flag.String("web.listen-address", "0.0.0.0:9664", "Address to listen on for web interface and telemetry")
+	flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+	flag.String("web.config.file", "/etc/ha_cluster_exporter.web.yaml", "web configuration YAML file to set listen address and TLS settings")
 	flag.String("address", "0.0.0.0", "The address to listen on for HTTP requests")
+	flag.String("port", "9664", "The port number to listen on for HTTP requests")
 	flag.String("log.level", "info", "The minimum logging level; levels are, in ascending order: debug, info, warn, error")
 	flag.String("log-level", "info", "The minimum logging level; levels are, in ascending order: debug, info, warn, error")
 	flag.String("crm-mon-path", "/usr/sbin/crm_mon", "path to crm_mon executable")
@@ -55,6 +59,8 @@ func init() {
 	flag.String("drbdsetup-path", "/sbin/drbdsetup", "path to drbdsetup executable")
 	flag.String("drbdsplitbrain-path", "/var/run/drbd/splitbrain", "path to drbd splitbrain hooks temporary files")
 	flag.Bool("enable-timestamps", false, "Add the timestamp to every metric line")
+	flag.CommandLine.MarkDeprecated("port", "please use --web.listen-address or --web.config.file to use Prometheus Exporter Toolkit")
+	flag.CommandLine.MarkDeprecated("address", "please use --web.listen-address or --web.config.file to use Prometheus Exporter Toolkit")
 	flag.CommandLine.MarkDeprecated("log-level", "please use --log.level")
 	flag.CommandLine.MarkDeprecated("enable-timestamps", "server-side metric timestamping is discouraged by Prometheus best-practices and should be avoided")
 	flag.CommandLine.SortFlags = false
@@ -116,14 +122,34 @@ func run() {
 	if config.GetString("log-level") != "debug" && config.GetString("log.level") != "debug" {
 		prometheus.Unregister(prometheus.NewGoCollector())
 	}
-
-	fullListenAddress := fmt.Sprintf("%s:%s", config.Get("address"), config.Get("port"))
-
+	
+	var fullListenAddress string
+	// use deprecated parameters
+	if config.IsSet("address") || config.IsSet("port") {
+		fullListenAddress = fmt.Sprintf("%s:%s", config.Get("address"), config.Get("port"))
+	// use new parameters
+	} else {
+		fullListenAddress = config.GetString("web.listen-address")
+	}
+	serveAddress := &http.Server{Addr: fullListenAddress}
+	servePath := config.GetString("web.telemetry-path")
+	
 	http.HandleFunc("/", internal.Landing)
-	http.Handle("/metrics", promhttp.Handler())
-
+	http.Handle(servePath, promhttp.Handler())
 	level.Info(logger).Log("msg", "Serving metrics on " + fullListenAddress + servePath)
-	listen = web.ListenAndServe(serveAddress, "", logger)
+
+	var listen error
+	var webConfigFile = config.GetString("web.config.file")
+	_, err= os.Stat(webConfigFile)
+    if err != nil {
+		level.Warn(logger).Log("msg", "Reading web config file failed", "err", err)
+		level.Info(logger).Log("msg", "Default web config or commandline values will be used")
+	    listen = web.ListenAndServe(serveAddress, "", logger)
+    } else {
+		level.Info(logger).Log("msg", "Using web config file: " + webConfigFile)
+	    listen = web.ListenAndServe(serveAddress, config.GetString("web.config.file"), logger)
+    }
+
 	if err := listen; err != nil {
 		level.Error(logger).Log("msg", "Error starting HTTP server", "err", err)
 		os.Exit(1)

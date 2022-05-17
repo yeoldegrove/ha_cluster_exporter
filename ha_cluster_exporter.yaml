@@ -1,6 +1,9 @@
 # sample config
-port: "9664"
-address: "0.0.0.0"
+web:
+  listen-address: "0.0.0.0:9663"
+  telemetry-path: "/metrics"
+  config:
+    file: "/etc/ha_cluster_exporter.web.yaml"
 log:
   level: "info"
 crm-mon-path: "/usr/sbin/crm_mon"

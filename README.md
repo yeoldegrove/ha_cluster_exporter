@@ -100,6 +100,45 @@ Please refer to the example [YAML configuration](ha_cluster_exporter.yaml) for m
 
 Additional CLI flags can also be passed via `/etc/sysconfig/prometheus-ha_cluster_exporter`.
 
+#### General Flags
+
+Name                                       | Description
+----                                       | -----------
+web.listen-address                         | Address to listen on for web interface and telemetry.
+web.telemetry-path                         | Path under which to expose metrics.
+web.config.file                            | Path to a [web configuration file](#tls-and-basic-authentication)
+log.level                                  | Logging verbosity (default: info)
+version                                    | Print the version information.
+
+##### Deprecated Flags
+Name                                       | Description
+----                                       | -----------
+address                                    | deprecated: please use --web.listen-address or --web.config.file to use Prometheus Exporter Toolkit
+port                                       | deprecated: please use --web.listen-address or --web.config.file to use Prometheus Exporter Toolkit
+log-level                                  | deprecated: please use log.level
+enable-timestamps                          | deprecated: server-side metric timestamping is discouraged by Prometheus best-practices and should be avoided
+
+#### Collector Flags
+
+Name                                       | Description
+----                                       | -----------
+crm-mon-path                               | path to crm_mon executable (default `/usr/sbin/crm_mon`)
+cibadmin-path                              | path to cibadmin executable (default `/usr/sbin/cibadmin`)
+corosync-cfgtoolpath-path                  | path to corosync-cfgtool executable (default `/usr/sbin/corosync-cfgtool`)
+corosync-quorumtool-path                   | path to corosync-quorumtool executable (default `/usr/sbin/corosync-quorumtool`)
+sbd-path                                   | path to sbd executable (default `/usr/sbin/sbd`)
+sbd-config-path                            | path to sbd configuration (default `/etc/sysconfig/sbd`)
+drbdsetup-path                             | path to drbdsetup executable (default `/sbin/drbdsetup`)
+drbdsplitbrain-path                        | path to drbd splitbrain hooks temporary files (default `/var/run/drbd/splitbrain`)
+
+### TLS and basic authentication
+
+The ha_cluster_exporter supports TLS and basic authentication.
+
+To use TLS and/or basic authentication, you need to pass a configuration file
+using the `--web.config.file` parameter. The format of the file is described
+[in the exporter-toolkit repository](https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md).
+
 ### systemd integration
 
 A [systemd unit file](ha_cluster_exporter.service) is provided with the RPM packages. You can enable and start it as usual:  
