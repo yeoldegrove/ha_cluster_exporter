@@ -1,8 +1,8 @@
+GO    := GO111MODULE=on go
+PROMU := $(shell $(GO) env GOPATH)/bin/promu
+
 # this is the what ends up in the RPM "Version" field and embedded in the --version CLI flag
 VERSION ?= $(shell .ci/get_version_from_git.sh)
-
-# this will be used as the build date by the Go compile task
-DATE = $(shell date --iso-8601=seconds)
 
 # if you want to release to OBS, this must be a remotely available Git reference
 REVISION ?= $(shell git rev-parse --abbrev-ref HEAD)
@@ -25,40 +25,43 @@ build-all: clean $(ARCHS)
 
 $(ARCHS):
 	@mkdir -p build/bin
-	CGO_ENABLED=0 GOOS=linux GOARCH=$@ go build -trimpath -ldflags "-s -w -X main.version=$(VERSION) -X main.buildDate=$(DATE)" -o build/bin/ha_cluster_exporter-$@
+	@sed "s/{{.Version}}/$(VERSION)/" .promu.yml >.promu.release.yml
+	@go get github.com/prometheus/promu
+	GOOS=linux GOARCH=$@ $(PROMU) build --config .promu.release.yml --prefix=build/bin ha_cluster_exporter-$@
+	@rm -f .promu.release.yml
 
 install:
-	go install
+	$(GO) install
 
 static-checks: vet-check fmt-check
 
 vet-check:
-	go vet ./...
+	$(GO) vet ./...
 
 fmt:
-	go fmt ./...
+	$(GO) fmt ./...
 
 mod-tidy:
-	go mod tidy
+	$(GO) mod tidy
 
 fmt-check:
 	.ci/go_lint.sh
 
 generate:
-	go generate ./...
+	$(GO) generate ./...
 
 test:
-	go test -v ./...
+	$(GO) test -v ./...
 
 checks: static-checks test
 
 coverage:
 	@mkdir -p build
-	go test -cover -coverprofile=build/coverage ./...
-	go tool cover -html=build/coverage
+	$(GO) test -cover -coverprofile=build/coverage ./...
+	$(GO) tool cover -html=build/coverage
 
 clean:
-	go clean
+	$(GO) clean
 	rm -rf build
 
 exporter-obs-workdir: build/obs/prometheus-ha_cluster_exporter
